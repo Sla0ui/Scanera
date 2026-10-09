@@ -39,16 +39,11 @@ func PerformBrowserCheck(ctx context.Context, url string, browserCtx context.Con
 	}
 
 	var title string
-	var bodyContent string
 
 	tasks := chromedp.Tasks{
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body", chromedp.ByQuery),
 		chromedp.Title(&title),
-	}
-
-	if config.AnalyzeContent {
-		tasks = append(tasks, chromedp.InnerHTML("body", &bodyContent))
 	}
 
 	if config.TakeScreenshots {
@@ -76,11 +71,6 @@ func PerformBrowserCheck(ctx context.Context, url string, browserCtx context.Con
 	}
 
 	result.Title = title
-
-	if config.AnalyzeContent && bodyContent != "" {
-		// Content analysis will be done by analyzer package
-		// For now, store it in a way that can be processed later
-	}
 
 	if title == "" {
 		return false

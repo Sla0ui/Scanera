@@ -1,0 +1,26 @@
+id: exposed-backup-archive
+info:
+  name: Exposed Backup Archive
+  severity: high
+  description: A downloadable backup archive was found at a common path and may contain source code or data.
+  reference:
+    - https://owasp.org/www-project-web-security-testing-guide/
+  tags:
+    - exposure
+    - backup
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/backup.zip"
+      - "{{BaseURL}}/backup.tar.gz"
+      - "{{BaseURL}}/www.zip"
+      - "{{BaseURL}}/site.zip"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: regex
+        part: header
+        regex:
+          - "(?i)content-type:\\s*(application/(zip|x-gzip|gzip|octet-stream|x-tar))"

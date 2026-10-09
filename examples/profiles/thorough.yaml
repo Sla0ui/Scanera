@@ -1,0 +1,15 @@
+# A thorough scan profile. Apply with: scanera scan --profile thorough.yaml ...
+concurrency: 5
+timeout: 20s
+detect_tech: true
+security_check: true
+analyze_content: true
+subdomains: true
+dns: true
+secrets: true
+vuln: true
+# Active features below still require --scope or --authorize on the command line.
+probes: true
+templates: true
+ports: true
+port_spec: top

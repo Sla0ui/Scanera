@@ -1,0 +1,5 @@
+# Scanera scope file: hosts authorized for active scanning.
+# One entry per line. Blank lines and # comments are ignored.
+# "*." matches a domain and all of its subdomains.
+example.com
+*.example.com

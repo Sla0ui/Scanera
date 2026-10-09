@@ -1,0 +1,27 @@
+id: exposed-sql-dump
+info:
+  name: Exposed SQL Dump
+  severity: high
+  description: A SQL dump was found at a common path and may disclose database contents.
+  tags:
+    - exposure
+    - database
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/dump.sql"
+      - "{{BaseURL}}/database.sql"
+      - "{{BaseURL}}/db.sql"
+      - "{{BaseURL}}/backup.sql"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        part: body
+        words:
+          - "CREATE TABLE"
+          - "INSERT INTO"
+          - "DROP TABLE"
+        condition: or

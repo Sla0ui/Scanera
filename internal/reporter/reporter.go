@@ -102,6 +102,11 @@ func (r *Reporter) WriteResultsToFiles() error {
 // GenerateReport creates a report in the specified format
 func (r *Reporter) GenerateReport(outputPath, format string) error {
 	formats := strings.Split(format, ",")
+	// "all" (also the default) expands to every supported report format;
+	// previously it matched no case and silently produced no files.
+	if strings.Contains(strings.ToLower(format), "all") {
+		formats = []string{"json", "csv", "html", "markdown"}
+	}
 	outputBase := strings.TrimSuffix(outputPath, filepath.Ext(outputPath))
 
 	for _, fmt := range formats {

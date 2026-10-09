@@ -1,0 +1,29 @@
+id: exposed-dockerfile
+info:
+  name: Exposed Dockerfile
+  severity: low
+  description: A Dockerfile is readable and may disclose build steps, base images, and secrets.
+  tags:
+    - exposure
+    - devops
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/Dockerfile"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: regex
+        part: body
+        regex:
+          - "(?m)^\\s*FROM\\s+\\S+"
+      - type: word
+        part: body
+        words:
+          - "RUN "
+          - "COPY "
+          - "CMD "
+          - "ENV "
+        condition: or

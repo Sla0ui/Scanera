@@ -21,15 +21,15 @@ func TestDetectTechnologies(t *testing.T) {
 			expectedTechs: []string{"WordPress"},
 		},
 		{
-			name:    "jQuery detection",
-			content: `<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>`,
-			headers: map[string][]string{},
+			name:          "jQuery detection",
+			content:       `<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>`,
+			headers:       map[string][]string{},
 			expectedTechs: []string{"jQuery"},
 		},
 		{
-			name:    "Multiple technologies",
-			content: `<script src="jquery.min.js"></script><script src="bootstrap.min.js"></script>`,
-			headers: map[string][]string{},
+			name:          "Multiple technologies",
+			content:       `<script src="jquery.min.js"></script><script src="bootstrap.min.js"></script>`,
+			headers:       map[string][]string{},
 			expectedTechs: []string{"jQuery", "Bootstrap"},
 		},
 		{

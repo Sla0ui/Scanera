@@ -1,0 +1,56 @@
+[
+  {
+    "tech": "jQuery",
+    "introduced": "1.0.0",
+    "fixed": "3.5.0",
+    "cve": "CVE-2020-11022",
+    "severity": "medium",
+    "title": "jQuery cross-site scripting via untrusted HTML passed to DOM manipulation methods",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2020-11022"
+  },
+  {
+    "tech": "Bootstrap",
+    "introduced": "4.0.0",
+    "fixed": "4.3.1",
+    "cve": "CVE-2019-8331",
+    "severity": "medium",
+    "title": "Bootstrap XSS in the tooltip or popover data-template attribute",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2019-8331"
+  },
+  {
+    "tech": "Apache",
+    "introduced": "2.4.49",
+    "fixed": "2.4.51",
+    "cve": "CVE-2021-41773",
+    "severity": "critical",
+    "title": "Apache HTTP Server path traversal and remote code execution",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2021-41773"
+  },
+  {
+    "tech": "OpenSSL",
+    "introduced": "3.0.0",
+    "fixed": "3.0.7",
+    "cve": "CVE-2022-3602",
+    "severity": "high",
+    "title": "OpenSSL X.509 email address buffer overflow",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2022-3602"
+  },
+  {
+    "tech": "nginx",
+    "introduced": "0.6.18",
+    "fixed": "1.21.0",
+    "cve": "CVE-2021-23017",
+    "severity": "high",
+    "title": "nginx DNS resolver off-by-one heap write",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2021-23017"
+  },
+  {
+    "tech": "WordPress",
+    "introduced": "3.7.0",
+    "fixed": "5.8.3",
+    "cve": "CVE-2022-21661",
+    "severity": "high",
+    "title": "WordPress SQL injection via WP_Query",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2022-21661"
+  }
+]

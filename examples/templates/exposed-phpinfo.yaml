@@ -1,0 +1,26 @@
+id: exposed-phpinfo
+info:
+  name: phpinfo() Exposed
+  severity: medium
+  description: phpinfo() output discloses configuration, modules, and environment.
+  reference:
+    - https://www.php.net/manual/en/function.phpinfo.php
+  tags:
+    - exposure
+    - php
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/phpinfo.php"
+      - "{{BaseURL}}/info.php"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        part: body
+        words:
+          - "<title>phpinfo()"
+          - "PHP Version"
+        condition: or

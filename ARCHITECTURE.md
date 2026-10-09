@@ -437,3 +437,44 @@ internal/reporter
 
 **Maintained by**: [Sla0ui](https://github.com/Sla0ui)
 **Last Updated**: 2025-01-XX
+
+---
+
+## v2.1: Attack-Surface Mapping, Intelligence, and Safety
+
+v2.1 extends the pipeline from passive validation into attack-surface mapping and
+vulnerability scanning, organized as independent, testable packages.
+
+### New packages
+
+**Tier 1 — attack-surface mapping**
+- `internal/dnsx` — full DNS record resolution (A/AAAA/CNAME/MX/NS/TXT) and wildcard detection.
+- `internal/subdomain` — subdomain discovery via passive certificate transparency (crt.sh) and a DNS brute-force over an embedded wordlist.
+- `internal/portscan` — concurrent TCP connect scanning with service identification and optional banner grabbing.
+- `internal/probe` — safe GET probes for commonly exposed sensitive files (`.git/config`, `.env`, backups, actuators), emitting findings.
+- `internal/secrets` — regex scanning of response bodies for exposed credentials and keys.
+
+**Tier 2 — intelligence layer**
+- `internal/signature` — a data-driven, nuclei-style YAML template engine (status/word/regex matchers) with embedded built-in templates and a user template directory. Replaces hardcoded checks with extensible data.
+- `internal/detector` (extended) — `DetectWithVersions` extracts technology versions to feed the matcher.
+- `internal/vuln` — maps detected technology versions to known CVEs using an embedded, extensible JSON database with a simple version comparator.
+- `internal/reporter` (extended) — `GenerateSARIF` emits SARIF 2.1.0 for CI code-scanning ingestion.
+
+**Tier 3 — hardening and safety**
+- `internal/ratelimit` — dependency-free token-bucket limiter for polite scanning.
+- `internal/netx` — shared HTTP client builder with proxy support (http/https/socks5).
+- `internal/scope` — an authorization gate (scope file or `--authorize`) plus an audit log. Active modules (ports, probes, templates) run only against in-scope hosts.
+- `internal/state` — persists completed domains so interrupted scans resume.
+- `internal/profile` — applies a YAML profile of flag overrides onto a Config.
+
+### The Finding model
+
+All detection modules emit a common `models.Finding` (id, title, severity, source,
+evidence, location, references, tags, CVEs), attached to each `Result` and sorted by
+severity. This is the single shape consumed by JSON, SARIF, and the terminal summary.
+
+### Orchestration
+
+`scanner.Scanner` now holds shared resources (HTTP client, rate limiter, scope,
+template engine). After the base HTTP scan of a domain, `enrich()` runs the enabled
+modules in order, gating the active ones behind scope authorization.

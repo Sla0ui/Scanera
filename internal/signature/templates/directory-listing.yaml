@@ -1,0 +1,25 @@
+id: directory-listing
+info:
+  name: Directory Listing Enabled
+  severity: low
+  description: The web server returns an automatic index of a directory, disclosing file names.
+  reference:
+    - https://owasp.org/www-community/attacks/Forced_browsing
+  tags:
+    - exposure
+    - misconfig
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        part: body
+        words:
+          - "Index of /"
+          - "<title>Index of"
+        condition: or

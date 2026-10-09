@@ -35,6 +35,36 @@ type Config struct {
 	ExportPath          string
 	MaxRedirects        int
 	IncludeCertInfo     bool
+
+	// Tier 1: attack-surface mapping
+	EnableSubdomains  bool
+	SubdomainWordlist string
+	PassiveOnly       bool
+	EnableDNSRecords  bool
+	EnablePorts       bool
+	PortSpec          string
+	EnableProbes      bool
+	EnableSecrets     bool
+	EnableCrawl       bool
+	CrawlDepth        int
+	MaxPages          int
+	EnableFuzz        bool
+	Aggressive        bool
+
+	// Tier 2: intelligence layer
+	EnableTemplates bool
+	TemplatesDir    string
+	EnableVuln      bool
+	SARIFPath       string
+
+	// Tier 3: hardening and safety
+	ProxyURL     string
+	RateLimit    float64
+	ScopeFile    string
+	Authorize    bool
+	AuditLogPath string
+	ResumeFile   string
+	Profile      string
 }
 
 // Validate checks if the configuration is valid and returns an error if not
@@ -99,5 +129,38 @@ func DefaultConfig() *Config {
 		ExportPath:          "",
 		MaxRedirects:        10,
 		IncludeCertInfo:     false,
+
+		EnableSubdomains:  false,
+		SubdomainWordlist: "",
+		PassiveOnly:       false,
+		EnableDNSRecords:  false,
+		EnablePorts:       false,
+		PortSpec:          "top",
+		EnableProbes:      false,
+		EnableSecrets:     false,
+		EnableCrawl:       false,
+		CrawlDepth:        2,
+		MaxPages:          50,
+		EnableFuzz:        false,
+		Aggressive:        false,
+
+		EnableTemplates: false,
+		TemplatesDir:    "",
+		EnableVuln:      false,
+		SARIFPath:       "",
+
+		ProxyURL:     "",
+		RateLimit:    0,
+		ScopeFile:    "",
+		Authorize:    false,
+		AuditLogPath: "",
+		ResumeFile:   "",
+		Profile:      "",
 	}
+}
+
+// ActiveScanRequested reports whether any feature that sends crafted requests
+// to non-root paths or non-web ports is enabled. These require authorization.
+func (c *Config) ActiveScanRequested() bool {
+	return c.EnablePorts || c.EnableProbes || c.EnableTemplates || c.EnableFuzz
 }
