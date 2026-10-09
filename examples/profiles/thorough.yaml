@@ -1,0 +1,19 @@
+# A thorough scan profile. Apply with: scanera scan --profile thorough.yaml ...
+# Unknown keys are rejected, so a typo fails loudly instead of being ignored.
+concurrency: 5
+timeout: 20s
+detect_tech: true
+security_check: true
+cert_info: true
+analyze_content: true
+subdomains: true
+dns: true
+takeover: true
+secrets: true
+vuln: true
+crawl: true
+# Active features below still require --scope or --authorize on the command line.
+probes: true
+templates: true
+ports: true
+port_spec: top

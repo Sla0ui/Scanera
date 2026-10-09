@@ -1,0 +1,25 @@
+id: wordpress-debug-log
+info:
+  name: WordPress debug.log Exposed
+  severity: medium
+  description: A WordPress debug.log is readable and may leak paths, queries, and errors.
+  tags:
+    - wordpress
+    - exposure
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/debug.log"
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        part: body
+        words:
+          - "PHP Notice"
+          - "PHP Warning"
+          - "PHP Fatal"
+          - "WordPress database error"
+        condition: or

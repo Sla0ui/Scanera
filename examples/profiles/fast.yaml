@@ -1,0 +1,4 @@
+# A fast liveness profile.
+concurrency: 20
+timeout: 5s
+skip_browser: true

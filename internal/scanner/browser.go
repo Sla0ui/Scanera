@@ -2,14 +2,14 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
-	"time"
 
 	"github.com/Sla0ui/scanera/internal/models"
-	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/chromedp"
 )
 
@@ -18,169 +18,105 @@ func SetupBrowserContext(config *models.Config) (context.Context, context.Cancel
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
 		chromedp.Flag("ignore-certificate-errors", !config.VerifyTLS),
-		// SECURITY FIX: Removed disable-web-security flag
 		chromedp.UserAgent(config.UserAgent),
-		// SECURITY FIX: Only disable sandbox if explicitly needed (not by default)
 		chromedp.DisableGPU,
 		chromedp.WindowSize(1280, 800),
 	)
+	if config.ProxyURL != "" {
+		// Keep browser traffic on the same route as the HTTP client.
+		opts = append(opts, chromedp.ProxyServer(config.ProxyURL))
+	}
 	return chromedp.NewExecAllocator(context.Background(), opts...)
 }
 
-// PerformBrowserCheck checks a URL using a headless browser
-func PerformBrowserCheck(ctx context.Context, url string, browserCtx context.Context, result *models.Result, config *models.Config) bool {
+// Whole-title matches for generic one-word error pages; matching these as
+// substrings would mark sites like "Error Tracking Software" as dead.
+var errorTitlesExact = map[string]bool{
+	"error": true, "forbidden": true, "unavailable": true, "not found": true,
+	"access denied": true, "blocked": true, "suspended": true,
+}
+
+var errorTitlePhrases = []string{
+	"404 not found", "page not found", "site not found", "file not found",
+	"403 forbidden", "401 unauthorized", "502 bad gateway", "bad gateway",
+	"503 service", "service unavailable", "504 gateway", "gateway timeout",
+	"internal server error", "web server is returning an unknown error",
+	"domain for sale", "domain is for sale", "buy this domain", "parked domain",
+	"account suspended", "account has been suspended",
+	"error 400", "error 401", "error 403", "error 404", "error 500", "error 502", "error 503",
+}
+
+var statusCodeTitle = regexp.MustCompile(`^(?:http\s*)?[45]\d\d\b`)
+
+// errorPageTitle reports whether a page title looks like an error or parking
+// page rather than a real site.
+func errorPageTitle(title string) bool {
+	t := strings.ToLower(strings.TrimSpace(title))
+	if errorTitlesExact[t] || statusCodeTitle.MatchString(t) {
+		return true
+	}
+	for _, p := range errorTitlePhrases {
+		if strings.Contains(t, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// PerformBrowserCheck loads url in the headless browser and returns nil when
+// it renders a real page: a non-empty title that isn't an error or parking
+// page. The returned error says why the page was rejected.
+func PerformBrowserCheck(ctx context.Context, url string, browserCtx context.Context, result *models.Result, config *models.Config) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	checkCtx, cancel := context.WithTimeout(browserCtx, config.BrowserTimeout)
 	defer cancel()
-
-	select {
-	case <-ctx.Done():
-		return false
-	default:
-	}
+	// Abort the page load as soon as the scan itself is cancelled.
+	stop := context.AfterFunc(ctx, cancel)
+	defer stop()
 
 	var title string
-	var bodyContent string
-
+	var shot []byte
 	tasks := chromedp.Tasks{
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body", chromedp.ByQuery),
 		chromedp.Title(&title),
 	}
-
-	if config.AnalyzeContent {
-		tasks = append(tasks, chromedp.InnerHTML("body", &bodyContent))
-	}
-
 	if config.TakeScreenshots {
-		var buf []byte
-		screenshotTask := fullScreenshot(90, &buf)
-		tasks = append(tasks, screenshotTask)
-
-		err := chromedp.Run(checkCtx, tasks)
-
-		if err == nil && len(buf) > 0 {
-			filename := fmt.Sprintf("%s.png", result.Domain)
-			screenshotPath := filepath.Join(config.OutputDir, config.ScreenshotDir, filename)
-
-			if err := os.WriteFile(screenshotPath, buf, 0644); err == nil {
-				result.ScreenshotPath = screenshotPath
-			}
-		} else if err != nil {
-			return false
+		tasks = append(tasks, chromedp.FullScreenshot(&shot, 90))
+	}
+	if err := chromedp.Run(checkCtx, tasks); err != nil {
+		if errors.Is(checkCtx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("page did not load within %s", config.BrowserTimeout)
 		}
-	} else {
-		err := chromedp.Run(checkCtx, tasks)
-		if err != nil {
-			return false
+		return fmt.Errorf("page load failed: %w", err)
+	}
+
+	if len(shot) > 0 {
+		path := filepath.Join(config.OutputDir, config.ScreenshotDir, screenshotName(result.Domain))
+		if err := os.WriteFile(path, shot, 0o644); err == nil {
+			result.ScreenshotPath = path
 		}
 	}
 
-	result.Title = title
-
-	if config.AnalyzeContent && bodyContent != "" {
-		// Content analysis will be done by analyzer package
-		// For now, store it in a way that can be processed later
+	title = strings.TrimSpace(title)
+	if title != "" {
+		result.Title = title
 	}
-
 	if title == "" {
-		return false
+		return errors.New("page has no title")
 	}
-
-	// Check for error pages
-	errorKeywords := []string{
-		"404", "not found", "error", "unavailable",
-		"forbidden", "access denied", "bad gateway",
-		"domain for sale", "parked domain",
+	if errorPageTitle(title) {
+		return fmt.Errorf("error or parking page (title %q)", title)
 	}
-
-	lowerTitle := strings.ToLower(title)
-
-	for _, keyword := range errorKeywords {
-		if strings.Contains(lowerTitle, keyword) {
-			return false
-		}
-	}
-
-	return true
+	return nil
 }
 
-// fullScreenshot takes a full-page screenshot
-func fullScreenshot(quality int, res *[]byte) chromedp.Action {
-	return chromedp.ActionFunc(func(ctx context.Context) error {
-		var buf []byte
-		if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, quality)); err != nil {
-			return err
-		}
-		*res = buf
-		return nil
-	})
-}
+var unsafeFileChars = regexp.MustCompile(`[^A-Za-z0-9._-]`)
 
-// CaptureScreenshot captures a screenshot of a domain
-func CaptureScreenshot(ctx context.Context, domain string, width, height int, timeoutDuration time.Duration, fullpage bool) ([]byte, error) {
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.DisableGPU,
-		chromedp.WindowSize(width, height),
-	)
-
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
-
-	browserCtx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	timeoutCtx, cancel := context.WithTimeout(browserCtx, timeoutDuration)
-	defer cancel()
-
-	urls := []string{
-		"https://" + domain,
-		"http://" + domain,
-	}
-
-	var buf []byte
-	var err error
-
-	for _, url := range urls {
-		if fullpage {
-			err = chromedp.Run(timeoutCtx,
-				chromedp.Navigate(url),
-				chromedp.WaitReady("body", chromedp.ByQuery),
-				chromedp.ActionFunc(func(ctx context.Context) error {
-					err := emulation.SetDeviceMetricsOverride(int64(width), int64(height), 1, false).Do(ctx)
-					if err != nil {
-						return err
-					}
-
-					var pageHeight int64
-					err = chromedp.Evaluate(`
-						Math.max(
-							document.body.scrollHeight,
-							document.documentElement.scrollHeight,
-							document.body.offsetHeight,
-							document.documentElement.offsetHeight
-						)
-					`, &pageHeight).Do(ctx)
-					if err != nil {
-						return err
-					}
-
-					return emulation.SetDeviceMetricsOverride(int64(width), pageHeight, 1, false).Do(ctx)
-				}),
-				chromedp.CaptureScreenshot(&buf),
-			)
-		} else {
-			err = chromedp.Run(timeoutCtx,
-				chromedp.Navigate(url),
-				chromedp.WaitReady("body", chromedp.ByQuery),
-				chromedp.CaptureScreenshot(&buf),
-			)
-		}
-
-		if err == nil {
-			return buf, nil
-		}
-	}
-
-	return nil, fmt.Errorf("failed to capture screenshot: %w", err)
+// screenshotName turns a domain (possibly host:port or an IPv6 literal) into a
+// file name that is valid on every OS.
+func screenshotName(domain string) string {
+	return unsafeFileChars.ReplaceAllString(domain, "_") + ".png"
 }

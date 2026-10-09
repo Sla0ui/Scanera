@@ -1,6 +1,8 @@
 package models
 
 import (
+	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -11,7 +13,7 @@ type Result struct {
 	FinalURL       string        `json:"final_url,omitempty"`
 	StatusCode     int           `json:"status_code,omitempty"`
 	RedirectTo     string        `json:"redirect_to,omitempty"`
-	Error          error         `json:"error,omitempty"`
+	Error          error         `json:"-"`
 	ResponseTime   time.Duration `json:"response_time"`
 	Title          string        `json:"title,omitempty"`
 	ServerInfo     ServerInfo    `json:"server_info"`
@@ -21,6 +23,57 @@ type Result struct {
 	IPAddresses    []string      `json:"ip_addresses,omitempty"`
 	LastChecked    time.Time     `json:"last_checked"`
 	Technologies   []string      `json:"technologies,omitempty"`
+
+	// Extended asset and finding data (populated by the tier 1-2 modules).
+	DNSRecords   *DNSRecords `json:"dns_records,omitempty"`
+	TechDetails  []Tech      `json:"tech_details,omitempty"`
+	OpenPorts    []Port      `json:"open_ports,omitempty"`
+	Subdomains   []string    `json:"subdomains,omitempty"`
+	Endpoints    []string    `json:"endpoints,omitempty"`
+	Findings     []Finding   `json:"findings,omitempty"`
+	DiscoveredBy string      `json:"discovered_by,omitempty"` // e.g. "seed", "crtsh", "bruteforce"
+
+	// SkippedActive is set when active modules were requested but the host
+	// was outside the authorized scope.
+	SkippedActive bool `json:"skipped_active,omitempty"`
+}
+
+// AddFinding appends a finding with a normalized severity.
+func (r *Result) AddFinding(f Finding) {
+	f.Severity = f.Severity.Normalize()
+	r.Findings = append(r.Findings, f)
+}
+
+// MarshalJSON renders Error as its string message. The bare error interface
+// marshals to an empty object ({}), which silently dropped every failure
+// reason from JSON reports; this emits a usable "error" string instead.
+func (r Result) MarshalJSON() ([]byte, error) {
+	type alias Result
+	out := struct {
+		alias
+		ErrorMessage string `json:"error,omitempty"`
+	}{alias: alias(r)}
+	if r.Error != nil {
+		out.ErrorMessage = r.Error.Error()
+	}
+	return json.Marshal(out)
+}
+
+// UnmarshalJSON restores Error from the "error" string MarshalJSON writes, so
+// results read back from scan_results.json keep their failure reason.
+func (r *Result) UnmarshalJSON(data []byte) error {
+	type alias Result
+	aux := struct {
+		*alias
+		ErrorMessage string `json:"error"`
+	}{alias: (*alias)(r)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.ErrorMessage != "" {
+		r.Error = errors.New(aux.ErrorMessage)
+	}
+	return nil
 }
 
 // ServerInfo contains HTTP server information
@@ -39,10 +92,13 @@ type SecurityInfo struct {
 	HasHTTPS        bool              `json:"has_https"`
 	ValidCert       bool              `json:"valid_cert"`
 	CertIssuer      string            `json:"cert_issuer,omitempty"`
+	CertSubject     string            `json:"cert_subject,omitempty"`
+	CertDNSNames    []string          `json:"cert_dns_names,omitempty"`
 	CertExpiry      time.Time         `json:"cert_expiry,omitempty"`
+	CertError       string            `json:"cert_error,omitempty"`
 	SecurityHeaders map[string]string `json:"security_headers,omitempty"`
 	HTTPSRedirect   bool              `json:"https_redirect"`
-	HSTPEnabled     bool              `json:"hstp_enabled"`
+	HSTSEnabled     bool              `json:"hsts_enabled"`
 	TLSVersion      string            `json:"tls_version,omitempty"`
 }
 
