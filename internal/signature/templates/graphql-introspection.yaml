@@ -1,0 +1,29 @@
+id: graphql-introspection
+info:
+  name: GraphQL Introspection Enabled
+  severity: low
+  description: The GraphQL endpoint answers introspection queries, handing out the full schema including fields that may not be meant for public clients.
+  reference:
+    - https://graphql.org/learn/introspection/
+  tags:
+    - graphql
+    - exposure
+requests:
+  - method: POST
+    path:
+      - "{{BaseURL}}/graphql"
+      - "{{BaseURL}}/api/graphql"
+    headers:
+      Content-Type: application/json
+    body: '{"query":"query{__schema{queryType{name}}}"}'
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      - type: word
+        part: body
+        words:
+          - "\"__schema\""
+          - "\"queryType\""
+        condition: and

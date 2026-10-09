@@ -48,3 +48,18 @@ func TestResultMarshalJSON_NilErrorOmitted(t *testing.T) {
 		t.Fatalf("expected no \"error\" field for a nil error, got: %s", data)
 	}
 }
+
+func TestResultJSONRoundTripKeepsError(t *testing.T) {
+	in := Result{Domain: "example.com", Error: errors.New("connection refused"), Findings: []Finding{{ID: "x"}}}
+	data, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out Result
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Error == nil || out.Error.Error() != "connection refused" || out.Domain != "example.com" || len(out.Findings) != 1 {
+		t.Fatalf("round trip lost data: %+v", out)
+	}
+}

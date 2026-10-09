@@ -1,4 +1,4 @@
-# Scanera v2.0 - Quick Start Guide
+# Scanera - Quick Start Guide
 
 ## Installation
 
@@ -21,18 +21,22 @@ go build -o scanera ./cmd/scanera
 ## Basic Usage
 
 ### 1. Prepare Your Domain List
-Create a text file with one domain per line:
+Create a text file with one target per line. Bare hosts, `host:port` and full
+URLs all work; duplicates are dropped:
 
 ```txt
 # domains.txt
 example.com
-github.com
-google.com
+https://github.com/
+api.example.com:8443
 ```
 
 ### 2. Run a Basic Scan
 ```bash
 ./scanera scan domains.txt
+
+# or pipe targets in from another tool
+cat domains.txt | ./scanera scan -
 ```
 
 ### 3. Check the Results
@@ -77,9 +81,20 @@ Results are saved in the `results/` directory:
 ### Generate HTML Report
 ```bash
 ./scanera scan \
-  --export report.html \
+  --export reports/report \
   --output-format html \
   domains.txt
+```
+
+### Fail a CI Job on Serious Findings
+```bash
+./scanera scan --security-check --takeover --vuln --sarif findings.sarif --fail-on high domains.txt
+# exit status 2 when any finding is high or critical
+```
+
+### Compare Two Runs
+```bash
+./scanera diff last-week/scan_results.json results/scan_results.json
 ```
 
 ## Configuration Examples
@@ -121,7 +136,8 @@ Results are saved in the `results/` directory:
 
 ### Feature Flags
 - `--detect-tech` - Detect technologies used
-- `--security-check` - Check security headers
+- `--security-check` - Report missing security headers, weak cookies and TLS problems
+- `--takeover` - Look for dangling CNAMEs and unclaimed third-party services
 - `--screenshots` - Take screenshots of pages
 - `--analyze-content` - Analyze page content
 - `--cert-info` - Include certificate details
@@ -134,8 +150,12 @@ Results are saved in the `results/` directory:
 ### Output Flags
 - `--export PATH` - Export report to path
 - `--output-format FORMATS` - Output formats (csv,json,html,markdown)
+- `--jsonl` - Stream each result to stdout as one JSON line
+- `--fail-on SEVERITY` - Exit with status 2 if a finding meets the severity
 - `-q, --quiet` - Quiet mode
 - `-v, --verbose` - Verbose logging
+
+Progress and status messages go to stderr, so stdout stays clean for piping.
 
 ## Troubleshooting
 
@@ -187,13 +207,26 @@ go test -race ./...
 
 ### Project Structure
 ```
-cmd/scanera/        - CLI entry point
-internal/models/    - Data structures
-internal/scanner/   - Scanning logic
-internal/detector/  - Technology detection
-internal/analyzer/  - Content analysis
-internal/reporter/  - Report generation
+cmd/scanera/          - CLI entry point
+internal/models/      - Config, Result and Finding types
+internal/scanner/     - Scan orchestration, HTTP and browser checks
+internal/posture/     - Header, cookie and TLS findings
+internal/takeover/    - Subdomain takeover checks
+internal/detector/    - Technology and version detection
+internal/analyzer/    - Content analysis
+internal/subdomain/   - Passive and brute-force subdomain discovery
+internal/probe/       - Sensitive-file probes (active)
+internal/discovery/   - Content discovery (active)
+internal/signature/   - YAML template engine (active)
+internal/portscan/    - TCP port scanning (active)
+internal/vuln/        - Version-to-CVE matching
+internal/secrets/     - Secret detection in responses
+internal/scope/       - Authorization scope and audit log
+internal/reporter/    - JSON, CSV, HTML, Markdown and SARIF output
+internal/diff/        - Comparing two runs
 ```
+
+See `ARCHITECTURE.md` for how these fit together.
 
 ### Adding Tests
 ```bash
@@ -206,8 +239,8 @@ go test -v ./internal/yourpackage
 
 ### Linting
 ```bash
-# Install golangci-lint
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# Install golangci-lint (the config uses the v2 format)
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
 
 # Run linter
 golangci-lint run
@@ -215,15 +248,14 @@ golangci-lint run
 
 ## Next Steps
 
-1. **Read the full documentation**: `README_v2.md`
+1. **Read the full documentation**: `README.md`
 2. **Understand the architecture**: `ARCHITECTURE.md`
-3. **Review refactoring changes**: `REFACTORING_SUMMARY.md`
-4. **Contribute**: See GitHub repository
+3. **Contribute**: See GitHub repository
 
 ## Support
 
 - **Issues**: https://github.com/Sla0ui/scanera/issues
-- **Documentation**: See README_v2.md
+- **Documentation**: See README.md
 - **Architecture**: See ARCHITECTURE.md
 
 ---

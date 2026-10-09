@@ -1,50 +1,40 @@
 package reporter
 
 import (
+	"bytes"
+	"encoding/csv"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
 // GenerateCSV creates a CSV report
 func (r *Reporter) GenerateCSV(outputPath string) error {
-	file, err := os.Create(outputPath)
-	if err != nil {
-		return fmt.Errorf("failed to create CSV file: %w", err)
-	}
-	defer file.Close()
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
 
-	file.WriteString("Domain,Status,StatusCode,FinalURL,IPAddresses,Server,Technologies,ResponseTime,Title,RedirectTo\n")
-
+	rows := [][]string{{"Domain", "Status", "StatusCode", "FinalURL", "IPAddresses", "Server", "Technologies", "ResponseTime", "Title", "RedirectTo", "Findings"}}
 	for _, result := range r.results {
-		status := "inactive"
-		if result.Active {
-			status = "active"
-		}
-
-		title := strings.ReplaceAll(result.Title, ",", " ")
-		title = strings.ReplaceAll(title, "\n", " ")
-
-		finalURL := strings.ReplaceAll(result.FinalURL, ",", "%2C")
-		redirectTo := strings.ReplaceAll(result.RedirectTo, ",", "%2C")
-		server := strings.ReplaceAll(result.ServerInfo.Server, ",", " ")
-		ips := strings.Join(result.IPAddresses, "|")
-		techs := strings.Join(result.Technologies, "|")
-
-		file.WriteString(fmt.Sprintf(
-			"%s,%s,%d,%s,%s,%s,%s,%dms,%s,%s\n",
+		rows = append(rows, []string{
 			result.Domain,
-			status,
-			result.StatusCode,
-			finalURL,
-			ips,
-			server,
-			techs,
-			result.ResponseTime.Milliseconds(),
-			title,
-			redirectTo,
-		))
+			statusLabel(result),
+			strconv.Itoa(result.StatusCode),
+			result.FinalURL,
+			strings.Join(result.IPAddresses, "|"),
+			result.ServerInfo.Server,
+			strings.Join(result.Technologies, "|"),
+			fmt.Sprintf("%dms", result.ResponseTime.Milliseconds()),
+			oneLine(result.Title),
+			result.RedirectTo,
+			strconv.Itoa(len(result.Findings)),
+		})
 	}
-
+	if err := writeCSVRows(w, rows); err != nil {
+		return fmt.Errorf("failed to encode CSV: %w", err)
+	}
+	if err := os.WriteFile(outputPath, buf.Bytes(), 0644); err != nil {
+		return fmt.Errorf("failed to write CSV file: %w", err)
+	}
 	return nil
 }

@@ -45,13 +45,22 @@ func (s Severity) Normalize() Severity {
 	}
 }
 
+// Valid reports whether s names one of the known severities.
+func (s Severity) Valid() bool {
+	switch Severity(strings.ToLower(strings.TrimSpace(string(s)))) {
+	case SeverityInfo, SeverityLow, SeverityMedium, SeverityHigh, SeverityCritical:
+		return true
+	}
+	return false
+}
+
 // Finding is a single security-relevant observation produced by any module
 // (templates, probes, secret scanning, vulnerability matching, port scanning).
 type Finding struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
 	Severity    Severity `json:"severity"`
-	Source      string   `json:"source"` // template|probe|secret|vuln|port|tls
+	Source      string   `json:"source"` // template|probe|secret|vuln|port|discovery|headers|tls|cookie|takeover
 	Description string   `json:"description,omitempty"`
 	Evidence    string   `json:"evidence,omitempty"`
 	Location    string   `json:"location,omitempty"` // URL, path, or host:port

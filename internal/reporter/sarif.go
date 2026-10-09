@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/Sla0ui/scanera/internal/models"
 )
@@ -50,6 +51,7 @@ type sarifText struct {
 
 type sarifResult struct {
 	RuleID     string          `json:"ruleId"`
+	RuleIndex  int             `json:"ruleIndex"`
 	Level      string          `json:"level"`
 	Message    sarifText       `json:"message"`
 	Locations  []sarifLocation `json:"locations,omitempty"`
@@ -72,7 +74,8 @@ type sarifArtifact struct {
 // suitable for CI code-scanning ingestion.
 func (r *Reporter) GenerateSARIF(outputPath string) error {
 	rulesByID := make(map[string]sarifRule)
-	var results []sarifResult
+	// SARIF requires "results" to be an array, so never emit null.
+	results := []sarifResult{}
 
 	for _, res := range r.results {
 		for _, f := range res.Findings {
@@ -105,7 +108,7 @@ func (r *Reporter) GenerateSARIF(outputPath string) error {
 					PhysicalLocation: sarifPhysical{ArtifactLocation: sarifArtifact{URI: loc}},
 				}},
 				Properties: map[string]any{
-					"severity": string(f.Severity),
+					"severity": string(f.Severity.Normalize()),
 					"source":   f.Source,
 					"domain":   res.Domain,
 				},
@@ -113,9 +116,19 @@ func (r *Reporter) GenerateSARIF(outputPath string) error {
 		}
 	}
 
+	// Map iteration order is random; sort so identical scans produce
+	// identical files, then point each result at its rule.
 	rules := make([]sarifRule, 0, len(rulesByID))
-	for _, r := range rulesByID {
-		rules = append(rules, r)
+	for _, rule := range rulesByID {
+		rules = append(rules, rule)
+	}
+	sort.Slice(rules, func(i, j int) bool { return rules[i].ID < rules[j].ID })
+	ruleIndex := make(map[string]int, len(rules))
+	for i, rule := range rules {
+		ruleIndex[rule.ID] = i
+	}
+	for i := range results {
+		results[i].RuleIndex = ruleIndex[results[i].RuleID]
 	}
 
 	log := sarifLog{
@@ -125,7 +138,7 @@ func (r *Reporter) GenerateSARIF(outputPath string) error {
 			Tool: sarifTool{Driver: sarifDriver{
 				Name:           "Scanera",
 				InformationURI: "https://github.com/Sla0ui/scanera",
-				Version:        "2.0.0",
+				Version:        Version,
 				Rules:          rules,
 			}},
 			Results: results,

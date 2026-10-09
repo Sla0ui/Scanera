@@ -1,0 +1,26 @@
+id: cors-reflected-origin
+info:
+  name: CORS Reflects Arbitrary Origin With Credentials
+  severity: high
+  description: The server echoes an untrusted Origin in Access-Control-Allow-Origin and allows credentials, so any website can read authenticated responses on behalf of a logged-in user.
+  reference:
+    - https://portswigger.net/web-security/cors
+  tags:
+    - cors
+    - misconfig
+requests:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+    headers:
+      Origin: "https://scanera-cors-check.invalid"
+    matchers-condition: and
+    matchers:
+      - type: regex
+        part: header
+        regex:
+          - "(?im)^Access-Control-Allow-Origin:\\s*https://scanera-cors-check\\.invalid\\s*$"
+      - type: regex
+        part: header
+        regex:
+          - "(?im)^Access-Control-Allow-Credentials:\\s*true\\s*$"

@@ -112,3 +112,104 @@ func TestGetTechnologyCategories(t *testing.T) {
 		t.Errorf("Expected Google Analytics in Analytics category, got %v", categories["Analytics"])
 	}
 }
+
+func TestDetectTechnologiesNoFalsePositives(t *testing.T) {
+	tests := []struct {
+		name       string
+		content    string
+		headers    map[string][]string
+		unexpected string
+	}{
+		{
+			name:       "X-UA-Compatible is not Google Analytics",
+			content:    `<meta http-equiv="X-UA-Compatible" content="IE=edge"><p>G-force and UA-style text</p>`,
+			unexpected: "Google Analytics",
+		},
+		{
+			name:       "CSS padding-left is not Angular",
+			content:    `<style>.x{padding-left:4px}.loading-spinner{margin-left:0}</style>`,
+			unexpected: "Angular",
+		},
+		{
+			name:       "prose about reactions is not React",
+			content:    `<p>The reaction to our reactive design was positive.</p>`,
+			unexpected: "React",
+		},
+		{
+			name:       "preact is not React",
+			content:    `<script src="/js/preact.min.js"></script>`,
+			unexpected: "React",
+		},
+		{
+			name:       "mentioning bootstrap in prose is not Bootstrap",
+			content:    `<p>We bootstrap new projects in a day.</p>`,
+			unexpected: "Bootstrap",
+		},
+		{
+			name:       "cdnjs link is not Cloudflare hosting",
+			content:    `<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>`,
+			unexpected: "Cloudflare",
+		},
+		{
+			name:       "CSP allowlist is not usage",
+			headers:    map[string][]string{"Content-Security-Policy": {"script-src https://js.stripe.com https://www.google-analytics.com/analytics.js"}},
+			unexpected: "Stripe",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := &models.Result{}
+			DetectTechnologies(tt.content, tt.headers, result)
+			for _, tech := range result.Technologies {
+				if tech == tt.unexpected {
+					t.Fatalf("unexpected %s in %v", tt.unexpected, result.Technologies)
+				}
+			}
+		})
+	}
+}
+
+func TestDetectTechnologiesRealSignals(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		headers  map[string][]string
+		expected string
+	}{
+		{"GA4 gtag", `<script async src="https://www.googletagmanager.com/gtag/js?id=G-ABCDEF1234"></script>`, nil, "Google Analytics"},
+		{"Universal Analytics id", `ga('create', 'UA-12345678-1', 'auto');`, nil, "Google Analytics"},
+		{"Angular app", `<app-root ng-version="17.0.0"></app-root>`, nil, "Angular"},
+		{"React root", `<div id="root" data-reactroot=""></div>`, nil, "React"},
+		{"Next.js data", `<script id="__NEXT_DATA__" type="application/json">{}</script>`, nil, "Next.js"},
+		{"Vue scoped styles", `<div data-v-1a2b3c4d class="card"></div>`, nil, "Vue.js"},
+		{"Cloudflare ray header", "", map[string][]string{"Cf-Ray": {"8a1b2c3d4e5f-AMS"}}, "Cloudflare"},
+		{"Drupal generator header", "", map[string][]string{"X-Generator": {"Drupal 10 (https://www.drupal.org)"}}, "Drupal"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := &models.Result{}
+			DetectTechnologies(tt.content, tt.headers, result)
+			for _, tech := range result.Technologies {
+				if tech == tt.expected {
+					return
+				}
+			}
+			t.Fatalf("expected %s in %v", tt.expected, result.Technologies)
+		})
+	}
+}
+
+func TestDetectTechnologiesSorted(t *testing.T) {
+	content := `<script src="/wp-content/x.js"></script><script src="jquery.min.js"></script><link href="bootstrap.min.css">`
+	for i := 0; i < 5; i++ {
+		result := &models.Result{}
+		DetectTechnologies(content, map[string][]string{"Server": {"nginx"}}, result)
+		for j := 1; j < len(result.Technologies); j++ {
+			if result.Technologies[j-1] > result.Technologies[j] {
+				t.Fatalf("technologies not sorted: %v", result.Technologies)
+			}
+		}
+	}
+}

@@ -174,7 +174,11 @@ func initTechPatterns() {
 │    └────┬────┘             │
 │         │                   │
 │    ┌────▼────┐             │
-│    │ HTTP    │ → TryHTTPRequest()
+│    │ HTTP    │ → fetch() (shared client, retries)
+│    └────┬────┘             │
+│         │                   │
+│    ┌────▼────┐             │
+│    │ Posture │ → assessSecurity() / takeover checks
 │    └────┬────┘             │
 │         │                   │
 │    ┌────▼────┐             │
@@ -187,6 +191,10 @@ func initTechPatterns() {
 │         │                   │
 │    ┌────▼────┐             │
 │    │ Analyzer│ → AnalyzePageContent()
+│    └────┬────┘             │
+│         │                   │
+│    ┌────▼────┐             │
+│    │ enrich  │ → vuln, secrets, crawl, DNS; scoped active modules
 │    └────┬────┘             │
 │         │                   │
 │         ▼                   │
@@ -218,36 +226,35 @@ func initTechPatterns() {
 
 ### Worker Pool Pattern
 ```go
-// Create worker pool
-numWorkers := config.MaxConcurrentChecks
-workCh := make(chan string, len(domains))
-resultCh := make(chan *models.Result, len(domains))
-
-// Start workers
+// Jobs carry their input index so results come back in input order.
 for i := 0; i < numWorkers; i++ {
-    go func(workerID int) {
-        browserCtx, cancel := chromedp.NewContext(allocCtx)
+    go func() {
+        browserCtx, cancel := chromedp.NewContext(allocCtx) // skipped with --skip-browser
         defer cancel()
-
-        for domain := range workCh {
-            result := s.ScanDomain(ctx, domain, browserCtx)
-            resultCh <- result
+        for j := range workCh {
+            r := s.ScanDomain(ctx, j.domain, browserCtx)
+            if ctx.Err() != nil {
+                return // interrupted mid-scan: drop the incomplete result
+            }
+            resultCh <- done{j.index, r}
         }
-    }(i)
+    }()
 }
+// A single collector goroutine stores results by index and calls OnResult
+// (resume progress, --jsonl streaming) as each domain finishes.
 ```
 
 ### Benefits:
 - Controlled concurrency (no resource exhaustion)
 - Browser context reuse per worker
-- Graceful cancellation via context
-- Progress tracking via channel
+- Deterministic report order regardless of which domain finishes first
+- Graceful cancellation: interrupted domains are never reported or marked done
 
 ### Race Condition Prevention:
-- Config is cloned before passing to goroutines
-- No shared mutable state
-- Results collected via channel (MPSC pattern)
-- Mutex for file appends only
+- Each worker owns its `Result`; nothing is shared until it reaches the collector
+- `OnResult` runs on the collector goroutine only, so callbacks need no locking
+- Scope audit log, rate limiter and resume state guard their own state with mutexes
+- `go test -race ./...` runs in CI
 
 ## Performance Considerations
 
@@ -304,9 +311,8 @@ transport := &http.Transport{
 - Timeouts (context deadlines)
 
 **Not Protected Against** (user responsibility):
-- Rate limiting (coming in future version)
-- IP blocking
-- WAF detection
+- IP blocking and WAF detection (use `--rate` to stay polite)
+- DNS lookups and port scans bypass `--proxy`; only HTTP(S) and browser traffic is proxied
 
 ## Testing Strategy
 
@@ -463,9 +469,14 @@ vulnerability scanning, organized as independent, testable packages.
 **Tier 3 — hardening and safety**
 - `internal/ratelimit` — dependency-free token-bucket limiter for polite scanning.
 - `internal/netx` — shared HTTP client builder with proxy support (http/https/socks5).
-- `internal/scope` — an authorization gate (scope file or `--authorize`) plus an audit log. Active modules (ports, probes, templates) run only against in-scope hosts.
-- `internal/state` — persists completed domains so interrupted scans resume.
-- `internal/profile` — applies a YAML profile of flag overrides onto a Config.
+- `internal/scope` — an authorization gate (scope file or `--authorize`) plus an audit log. Scope entries can be hosts, `*.` wildcards, IPs, CIDR ranges and `!` exclusions. Active modules (ports, probes, templates, content discovery) run only against in-scope hosts, and use a client whose redirects can't leave the scope.
+- `internal/state` — persists completed domains (throttled, atomic writes) so interrupted scans resume; earlier results are carried forward from `scan_results.json`.
+- `internal/profile` — applies a YAML profile of flag overrides onto a Config; unknown keys are rejected and authorization can't be set from a profile.
+
+**Passive checks and run comparison**
+- `internal/posture` — findings from data the scanner already has: missing security headers, version disclosure, weak cookie flags, and the negotiated TLS session (expired/expiring/untrusted certificates, legacy protocol versions).
+- `internal/takeover` — subdomain takeover detection: dangling CNAMEs (NXDOMAIN targets) and third-party services serving their "unclaimed" page.
+- `internal/diff` — compares two `scan_results.json` files (new/removed hosts, liveness changes, new/resolved findings, opened/closed ports) for the `diff` command.
 
 ### The Finding model
 
@@ -477,4 +488,6 @@ severity. This is the single shape consumed by JSON, SARIF, and the terminal sum
 
 `scanner.Scanner` now holds shared resources (HTTP client, rate limiter, scope,
 template engine). After the base HTTP scan of a domain, `enrich()` runs the enabled
-modules in order, gating the active ones behind scope authorization.
+modules in order, gating the active ones behind scope authorization. Enrichment runs
+once per domain, on the first response with a success status, even when the browser
+check then falls back from HTTPS to HTTP.

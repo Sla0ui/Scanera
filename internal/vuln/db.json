@@ -1,12 +1,39 @@
 [
   {
     "tech": "jQuery",
-    "introduced": "1.0.0",
+    "introduced": "1.2.0",
     "fixed": "3.5.0",
     "cve": "CVE-2020-11022",
     "severity": "medium",
     "title": "jQuery cross-site scripting via untrusted HTML passed to DOM manipulation methods",
     "reference": "https://nvd.nist.gov/vuln/detail/CVE-2020-11022"
+  },
+  {
+    "tech": "jQuery",
+    "introduced": "1.0.3",
+    "fixed": "3.5.0",
+    "cve": "CVE-2020-11023",
+    "severity": "medium",
+    "title": "jQuery cross-site scripting via HTML containing <option> elements",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2020-11023"
+  },
+  {
+    "tech": "jQuery",
+    "introduced": "",
+    "fixed": "3.4.0",
+    "cve": "CVE-2019-11358",
+    "severity": "medium",
+    "title": "jQuery prototype pollution in jQuery.extend",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2019-11358"
+  },
+  {
+    "tech": "jQuery",
+    "introduced": "",
+    "fixed": "3.0.0",
+    "cve": "CVE-2015-9251",
+    "severity": "medium",
+    "title": "jQuery cross-site scripting via cross-domain Ajax responses executed as script",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2015-9251"
   },
   {
     "tech": "Bootstrap",
@@ -18,13 +45,76 @@
     "reference": "https://nvd.nist.gov/vuln/detail/CVE-2019-8331"
   },
   {
+    "tech": "Bootstrap",
+    "introduced": "3.0.0",
+    "fixed": "3.4.1",
+    "cve": "CVE-2019-8331",
+    "severity": "medium",
+    "title": "Bootstrap XSS in the tooltip or popover data-template attribute",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2019-8331"
+  },
+  {
+    "tech": "Bootstrap",
+    "introduced": "4.0.0",
+    "fixed": "4.1.2",
+    "cve": "CVE-2018-14041",
+    "severity": "medium",
+    "title": "Bootstrap XSS in the scrollspy data-target property",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2018-14041"
+  },
+  {
+    "tech": "Apache",
+    "introduced": "2.4.49",
+    "fixed": "2.4.50",
+    "cve": "CVE-2021-41773",
+    "severity": "high",
+    "title": "Apache HTTP Server path traversal (remote code execution where CGI is enabled)",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2021-41773"
+  },
+  {
     "tech": "Apache",
     "introduced": "2.4.49",
     "fixed": "2.4.51",
-    "cve": "CVE-2021-41773",
+    "cve": "CVE-2021-42013",
     "severity": "critical",
-    "title": "Apache HTTP Server path traversal and remote code execution",
-    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2021-41773"
+    "title": "Apache HTTP Server path traversal and remote code execution (incomplete fix for CVE-2021-41773)",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2021-42013"
+  },
+  {
+    "tech": "Apache",
+    "introduced": "2.4.0",
+    "fixed": "2.4.52",
+    "cve": "CVE-2021-44790",
+    "severity": "critical",
+    "title": "Apache HTTP Server buffer overflow in the mod_lua multipart parser",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2021-44790"
+  },
+  {
+    "tech": "Apache",
+    "introduced": "2.4.0",
+    "fixed": "2.4.56",
+    "cve": "CVE-2023-25690",
+    "severity": "critical",
+    "title": "Apache HTTP Server request smuggling in some mod_proxy configurations",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2023-25690"
+  },
+  {
+    "tech": "Apache",
+    "introduced": "2.4.0",
+    "fixed": "2.4.60",
+    "cve": "CVE-2024-38476",
+    "severity": "critical",
+    "title": "Apache HTTP Server information disclosure, SSRF, or local script execution via malicious backend response headers",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2024-38476"
+  },
+  {
+    "tech": "OpenSSL",
+    "introduced": "1.0.1",
+    "fixed": "1.0.1g",
+    "cve": "CVE-2014-0160",
+    "severity": "high",
+    "title": "OpenSSL Heartbleed out-of-bounds read in the heartbeat extension",
+    "reference": "https://nvd.nist.gov/vuln/detail/CVE-2014-0160"
   },
   {
     "tech": "OpenSSL",
@@ -38,7 +128,7 @@
   {
     "tech": "nginx",
     "introduced": "0.6.18",
-    "fixed": "1.21.0",
+    "fixed": "1.20.1",
     "cve": "CVE-2021-23017",
     "severity": "high",
     "title": "nginx DNS resolver off-by-one heap write",

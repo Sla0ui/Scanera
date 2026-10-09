@@ -7,7 +7,9 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Sla0ui/scanera/internal/models"
 	"github.com/Sla0ui/scanera/internal/ratelimit"
@@ -19,7 +21,69 @@ type probe struct {
 	Title       string
 	Severity    models.Severity
 	Description string
-	match       func(status int, body string, h http.Header) bool
+	// artifact marks raw files (.env, .git/config, ...). Many sites answer
+	// every unknown path with their HTML app shell, so an HTML response at one
+	// of these paths is a catch-all page, never the file itself.
+	artifact bool
+	match    func(status int, body string, h http.Header) bool
+}
+
+var (
+	dotenvLine  = regexp.MustCompile(`(?m)^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=`)
+	contactLine = regexp.MustCompile(`(?mi)^contact:\s*\S`)
+	svnHeader   = regexp.MustCompile(`^\d+\s*\n`)
+	// SVN 1.7+ leaves only the format number in .svn/entries.
+	svnStub = regexp.MustCompile(`^(?:[89]|[1-3][0-9])\s*$`)
+)
+
+var dotenvSensitive = []string{"KEY", "SECRET", "PASSWORD", "PASSWD", "TOKEN", "DB_", "DATABASE", "CREDENTIAL", "AUTH"}
+
+// looksLikeDotenv requires at least one KEY=value line whose name suggests a
+// credential, so a page that merely contains "=" and "KEY" doesn't qualify.
+func looksLikeDotenv(status int, body string, _ http.Header) bool {
+	if status != http.StatusOK {
+		return false
+	}
+	for _, m := range dotenvLine.FindAllStringSubmatch(body, -1) {
+		for _, s := range dotenvSensitive {
+			if strings.Contains(m[1], s) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func looksLikeSVNEntries(status int, body string, _ http.Header) bool {
+	if status != http.StatusOK {
+		return false
+	}
+	if svnStub.MatchString(body) {
+		return true
+	}
+	return svnHeader.MatchString(body) &&
+		(strings.Contains(body, "\ndir\n") || strings.Contains(body, "svn://") || strings.Contains(body, "svn+ssh://"))
+}
+
+func bodyContainsAll(sub ...string) func(int, string, http.Header) bool {
+	return func(status int, body string, _ http.Header) bool {
+		if status != http.StatusOK {
+			return false
+		}
+		for _, s := range sub {
+			if !strings.Contains(body, s) {
+				return false
+			}
+		}
+		return true
+	}
+}
+
+func looksLikeHTML(h http.Header, body string) bool {
+	if strings.Contains(strings.ToLower(h.Get("Content-Type")), "text/html") {
+		return true
+	}
+	return strings.HasPrefix(strings.TrimSpace(body), "<")
 }
 
 func bodyContains(sub ...string) func(int, string, http.Header) bool {
@@ -40,23 +104,19 @@ var probes = []probe{
 	{
 		Path: "/.git/config", ID: "exposed-git-config", Title: "Exposed .git/config",
 		Severity: models.SeverityHigh, Description: "A .git/config is reachable; the repository may be downloadable, leaking source and history.",
-		match: bodyContains("[core]", "repositoryformatversion"),
+		artifact: true,
+		match:    bodyContains("[core]", "repositoryformatversion"),
 	},
 	{
 		Path: "/.env", ID: "exposed-dotenv", Title: "Exposed .env file",
 		Severity: models.SeverityCritical, Description: "A .env file is reachable and commonly contains credentials and secrets.",
-		match: func(status int, body string, _ http.Header) bool {
-			return status == http.StatusOK && strings.Contains(body, "=") &&
-				(strings.Contains(strings.ToUpper(body), "KEY") ||
-					strings.Contains(strings.ToUpper(body), "SECRET") ||
-					strings.Contains(strings.ToUpper(body), "PASSWORD") ||
-					strings.Contains(strings.ToUpper(body), "TOKEN") ||
-					strings.Contains(strings.ToUpper(body), "DB_"))
-		},
+		artifact: true,
+		match:    looksLikeDotenv,
 	},
 	{
 		Path: "/.DS_Store", ID: "exposed-ds-store", Title: "Exposed .DS_Store",
 		Severity: models.SeverityLow, Description: "A .DS_Store file can disclose directory structure.",
+		artifact: true,
 		match: func(status int, body string, _ http.Header) bool {
 			return status == http.StatusOK && strings.HasPrefix(body, "\x00\x00\x00\x01Bud1")
 		},
@@ -64,7 +124,8 @@ var probes = []probe{
 	{
 		Path: "/.svn/entries", ID: "exposed-svn", Title: "Exposed .svn/entries",
 		Severity: models.SeverityMedium, Description: "A Subversion working copy may be exposed.",
-		match: bodyContains("svn://", "dir"),
+		artifact: true,
+		match:    looksLikeSVNEntries,
 	},
 	{
 		Path: "/server-status", ID: "apache-server-status", Title: "Apache server-status exposed",
@@ -72,19 +133,23 @@ var probes = []probe{
 		match: bodyContains("Apache Server Status", "Server uptime"),
 	},
 	{
-		Path: "/.well-known/security.txt", ID: "missing-security-txt", Title: "security.txt present",
+		Path: "/.well-known/security.txt", ID: "security-txt", Title: "security.txt present",
 		Severity: models.SeverityInfo, Description: "A security.txt contact policy is published.",
-		match: bodyContains("Contact:", "contact:"),
+		artifact: true,
+		match: func(status int, body string, _ http.Header) bool {
+			return status == http.StatusOK && contactLine.MatchString(body)
+		},
 	},
 	{
 		Path: "/actuator/health", ID: "spring-actuator", Title: "Spring Boot actuator exposed",
 		Severity: models.SeverityMedium, Description: "Spring Boot actuator endpoints are reachable and may leak environment and metrics.",
-		match: bodyContains("\"status\":\"UP\"", "\"status\": \"UP\""),
+		artifact: true,
+		match:    bodyContains("\"status\":\"UP\"", "\"status\": \"UP\""),
 	},
 	{
 		Path: "/phpinfo.php", ID: "phpinfo", Title: "phpinfo() exposed",
 		Severity: models.SeverityMedium, Description: "phpinfo() output discloses configuration and environment.",
-		match: bodyContains("phpinfo()", "PHP Version"),
+		match: bodyContainsAll("phpinfo()", "PHP Version"),
 	},
 }
 
@@ -131,6 +196,9 @@ func Run(ctx context.Context, baseURL string, opts Options) []models.Finding {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		resp.Body.Close()
 
+		if p.artifact && looksLikeHTML(resp.Header, string(body)) {
+			continue
+		}
 		if p.match(resp.StatusCode, string(body), resp.Header) {
 			findings = append(findings, models.Finding{
 				ID:          p.ID,
@@ -139,17 +207,48 @@ func Run(ctx context.Context, baseURL string, opts Options) []models.Finding {
 				Source:      "probe",
 				Description: p.Description,
 				Location:    target,
-				Evidence:    snippet(string(body)),
+				Evidence:    evidence(p.ID, string(body)),
 			})
 		}
 	}
 	return findings
 }
 
+var (
+	urlCredentials = regexp.MustCompile(`(?i)([a-z][a-z0-9+.-]*://)[^/\s:@]+(?::[^/\s@]*)?@`)
+	secretAssign   = regexp.MustCompile(`(?im)^(\s*(?:export\s+)?[\w.-]*(?:pass|secret|token|key|auth|credential)[\w.-]*\s*[=:]\s*)\S.*$`)
+)
+
+// evidence describes what a probe found without copying secrets into the
+// report: reports end up in CI logs and code-scanning uploads.
+func evidence(id, body string) string {
+	if id == "exposed-dotenv" {
+		var keys []string
+		seen := make(map[string]bool)
+		for _, m := range dotenvLine.FindAllStringSubmatch(body, -1) {
+			if !seen[m[1]] {
+				seen[m[1]] = true
+				keys = append(keys, m[1])
+			}
+		}
+		if len(keys) > 15 {
+			keys = append(keys[:15], "...")
+		}
+		return "variables: " + strings.Join(keys, ", ")
+	}
+	body = urlCredentials.ReplaceAllString(body, "${1}****@")
+	body = secretAssign.ReplaceAllString(body, "${1}****")
+	return snippet(body)
+}
+
 func snippet(s string) string {
 	s = strings.TrimSpace(s)
-	if len(s) > 160 {
-		return s[:160] + "..."
+	if len(s) <= 160 {
+		return s
 	}
-	return s
+	cut := 160
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "..."
 }

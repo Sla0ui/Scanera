@@ -1,5 +1,13 @@
 # Scanera scope file: hosts authorized for active scanning.
 # One entry per line. Blank lines and # comments are ignored.
-# "*." matches a domain and all of its subdomains.
+#
+#   example.com          exactly this host
+#   *.example.com        the domain and all of its subdomains
+#   203.0.113.7          a single IP address
+#   203.0.113.0/24       an IP range (IPv4 or IPv6 CIDR)
+#   !dev.example.com     an exclusion; exclusions always win
+#
+# URL-style entries (https://app.example.com:8443/login) are reduced to the host.
 example.com
 *.example.com
+!staging.example.com

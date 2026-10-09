@@ -54,8 +54,15 @@ func Run(ctx context.Context, baseURL string, opts Options) ([]models.Finding, [
 		paths = Paths()
 	}
 
-	// Soft-404 baseline: a path that should not exist.
-	baseStatus, baseLen := probe(ctx, client, fmt.Sprintf("%s/scanera-404-%d", base, rand.Int()), opts.UserAgent)
+	// Baseline: how the server answers a path that should not exist. Soft-404
+	// sites return 200 here, and WAFs often return 403 for everything.
+	basePath := fmt.Sprintf("/scanera-404-%d", rand.Int()) //nolint:gosec // only has to be unlikely to exist, not unpredictable
+	if opts.Limiter != nil {
+		if err := opts.Limiter.Wait(ctx); err != nil {
+			return nil, nil
+		}
+	}
+	baseStatus, baseLen := probe(ctx, client, base+basePath, opts.UserAgent)
 
 	var findings []models.Finding
 	var discovered []string
@@ -72,7 +79,7 @@ func Run(ctx context.Context, baseURL string, opts Options) ([]models.Finding, [
 		}
 		u := base + p
 		status, length := probe(ctx, client, u, opts.UserAgent)
-		if !interesting(status, length, baseStatus, baseLen) {
+		if !interesting(status, length, baseStatus, baseLen, tolerance(p, basePath)) {
 			continue
 		}
 		discovered = append(discovered, u)
@@ -106,29 +113,40 @@ func probe(ctx context.Context, client *http.Client, rawURL, ua string) (int, in
 	return resp.StatusCode, len(body)
 }
 
+// tolerance is how far a body length may drift from the baseline and still
+// count as the same page. Error pages often echo the requested path (sometimes
+// in both the title and the body), so the allowance grows with the difference
+// in path length.
+func tolerance(path, basePath string) int {
+	d := len(path) - len(basePath)
+	if d < 0 {
+		d = -d
+	}
+	return 64 + 2*d
+}
+
 // interesting decides whether a response indicates a real, distinct resource
-// versus the soft-404 baseline.
-func interesting(status, length, baseStatus, baseLen int) bool {
+// rather than the server's generic answer for unknown paths.
+func interesting(status, length, baseStatus, baseLen, tol int) bool {
 	if status == 0 || status == 404 {
 		return false
+	}
+	// Same status and roughly the same size as the bogus path means we got the
+	// catch-all response again, whatever its status code.
+	if status == baseStatus {
+		diff := length - baseLen
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff <= tol {
+			return false
+		}
 	}
 	// 401/403 reveal a protected but present resource.
 	if status == 401 || status == 403 {
 		return true
 	}
-	if status >= 200 && status < 400 {
-		// If the baseline (bogus path) also returns 2xx/3xx, only flag when the
-		// body length differs meaningfully (soft-404 pages are near-identical).
-		if baseStatus >= 200 && baseStatus < 400 {
-			diff := length - baseLen
-			if diff < 0 {
-				diff = -diff
-			}
-			return diff > 64
-		}
-		return true
-	}
-	return false
+	return status >= 200 && status < 400
 }
 
 func severityFor(path string, status int) models.Severity {

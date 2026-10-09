@@ -29,10 +29,14 @@ func initVersionFPs() {
 	}
 	// Body-based (version optional via capture group 1).
 	add("jQuery", "JavaScript", false, `(?i)jquery[/\-@](\d+\.\d+(?:\.\d+)?)`)
+	// WordPress serves core jQuery as jquery.min.js?ver=<jQuery version>.
+	add("jQuery", "JavaScript", false, `(?i)/jquery(?:\.min)?\.js\?ver=(\d+\.\d+(?:\.\d+)?)`)
 	add("Bootstrap", "CSS Framework", false, `(?i)bootstrap[/\-@](\d+\.\d+(?:\.\d+)?)`)
 	add("WordPress", "CMS", false, `(?i)<meta name="generator" content="WordPress (\d+\.\d+(?:\.\d+)?)`)
-	add("Drupal", "CMS", false, `(?i)Drupal[ /](\d+(?:\.\d+)?)`)
+	// Only trust the generator tag; "Drupal 7" in prose says nothing about the site.
+	add("Drupal", "CMS", false, `(?i)<meta name="generator" content="Drupal (\d+(?:\.\d+)?)`)
 	// Header-based.
+	add("Drupal", "CMS", true, `(?i)X-Generator: Drupal (\d+(?:\.\d+)?)`)
 	add("nginx", "Server", true, `(?i)nginx/(\d+\.\d+(?:\.\d+)?)`)
 	add("Apache", "Server", true, `(?i)Apache/(\d+\.\d+(?:\.\d+)?)`)
 	add("PHP", "Programming", true, `(?i)PHP/(\d+\.\d+(?:\.\d+)?)`)

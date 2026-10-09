@@ -3,7 +3,6 @@ module github.com/Sla0ui/scanera
 go 1.21
 
 require (
-	github.com/chromedp/cdproto v0.0.0-20231011050154-1d073bb38998
 	github.com/chromedp/chromedp v0.9.3
 	github.com/fatih/color v1.16.0
 	github.com/schollz/progressbar/v3 v3.14.1
@@ -13,6 +12,7 @@ require (
 )
 
 require (
+	github.com/chromedp/cdproto v0.0.0-20231011050154-1d073bb38998 // indirect
 	github.com/chromedp/sysutil v1.0.0 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect

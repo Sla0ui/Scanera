@@ -2,6 +2,7 @@ package detector
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -17,40 +18,45 @@ var (
 func initTechPatterns() {
 	techPatterns = make(map[string]*regexp.Regexp)
 
+	// Patterns look for asset paths, globals, and markup a product actually
+	// emits, not its name: a page that merely mentions "react" or "bootstrap"
+	// in prose is not using it.
 	patterns := map[string]string{
-		"WordPress":          `wp-content|wp-includes|/wp-json/|wordpress`,
-		"Joomla":             `joomla|J!(jQuery|Framework)`,
-		"Drupal":             `Drupal|drupal|sites/all|sites/default`,
-		"Magento":            `Mage\.Cookies|Magento`,
-		"Shopify":            `cdn\.shopify\.com|shopify\.com|Shopify\.theme`,
-		"WooCommerce":        `woocommerce|WooCommerce`,
-		"jQuery":             `jquery`,
-		"React":              `react|reactjs|_reactRootContainer`,
-		"Vue.js":             `vue|__vue__`,
-		"Angular":            `ng-|angular|AngularJS|angular\.js`,
-		"Bootstrap":          `bootstrap`,
+		"WordPress":          `wp-content/|wp-includes/|/wp-json/|(?i:<meta name="generator" content="WordPress)`,
+		"Joomla":             `(?i:<meta name="generator" content="Joomla)|/media/jui/|/media/system/js/core\.js|/components/com_`,
+		"Drupal":             `Drupal\.settings|drupal-settings-json|data-drupal-|/sites/(?:all|default)/(?:themes|modules|files)/|(?i:content="Drupal|^x-generator: drupal|^x-drupal-)`,
+		"Magento":            `Mage\.Cookies|text/x-magento-init|data-mage-init|/skin/frontend/|/static/version\d+/frontend/`,
+		"Shopify":            `cdn\.shopify\.com|Shopify\.theme|\.myshopify\.com`,
+		"WooCommerce":        `/plugins/woocommerce/|wc_add_to_cart_params|class="[^"]*\bwoocommerce`,
+		"jQuery":             `jquery[\w.\-]*\.js|code\.jquery\.com|jQuery\.fn`,
+		"React":              `data-reactroot|_reactRootContainer|__REACT_DEVTOOLS_GLOBAL_HOOK__|\breact(?:-dom)?(?:\.production|\.development)?(?:\.min)?\.js`,
+		"Next.js":            `__NEXT_DATA__|/_next/static/`,
+		"Vue.js":             `data-v-[0-9a-f]{8}|__vue__|\bvue(?:\.runtime)?(?:\.global)?(?:\.prod)?(?:\.min)?\.js`,
+		"Nuxt.js":            `__NUXT__|/_nuxt/`,
+		"Angular":            `ng-version=|_ngcontent-|\bng-(?:app|controller)\b|\bangular(?:\.min)?\.js`,
+		"Bootstrap":          `bootstrap[\w.\-]*\.(?:js|css)\b`,
 		"Tailwind CSS":       `tailwindcss|tailwind\.css`,
 		"Font Awesome":       `font-awesome|fontawesome`,
-		"Google Analytics":   `google-analytics|gtag|UA-|G-`,
-		"Google Tag Manager": `googletagmanager`,
-		"Cloudflare":         `cloudflare`,
-		"PHP":                `X-Powered-By: PHP`,
-		"ASP.NET":            `ASP\.NET|__VIEWSTATE|__EVENTTARGET`,
+		"Google Analytics":   `google-analytics\.com/(?:analytics|ga|urchin)\.js|googletagmanager\.com/gtag/js|gtag\(\s*['"]config['"]\s*,\s*['"](?:UA|G)-|\bUA-\d{4,10}-\d{1,4}\b`,
+		"Google Tag Manager": `googletagmanager\.com/gtm\.js|\bGTM-[A-Z0-9]{4,8}\b`,
+		"Cloudflare":         `/cdn-cgi/|__cf_bm|(?i:^cf-ray:|^server: cloudflare)`,
+		"PHP":                `(?i:^x-powered-by: php)|PHPSESSID`,
+		"ASP.NET":            `__VIEWSTATE|__EVENTVALIDATION|ASP\.NET_SessionId|(?i:^x-aspnet-version:|^x-powered-by: asp\.net)`,
 		"Google Fonts":       `fonts\.googleapis\.com`,
 		"Google Maps":        `maps\.google\.com|maps\.googleapis\.com`,
-		"Google reCAPTCHA":   `recaptcha`,
+		"Google reCAPTCHA":   `google\.com/recaptcha|grecaptcha|g-recaptcha`,
 		"Modernizr":          `modernizr`,
-		"Moment.js":          `moment\.js|moment\.min\.js`,
-		"Lodash":             `lodash|_\.min\.js|_\.debounce|_\.throttle`,
-		"Axios":              `axios`,
-		"Chart.js":           `chart\.js|Chart\.min\.js`,
-		"D3.js":              `d3\.js|d3\.min\.js`,
+		"Moment.js":          `moment(?:-with-locales)?(?:\.min)?\.js`,
+		"Lodash":             `\blodash(?:\.min)?\.js|/lodash[@/]|(?i:@license lodash)`,
+		"Axios":              `\baxios(?:\.min)?\.js|/axios[@/]`,
+		"Chart.js":           `(?i:[/"']chart(?:\.umd|\.bundle)?(?:\.min)?\.js|chart\.js@\d)`,
+		"D3.js":              `\bd3(?:\.v\d)?(?:\.min)?\.js|/d3@\d|d3js\.org`,
 		"Leaflet":            `leaflet\.js|leaflet\.css`,
-		"Stripe":             `stripe\.com|Stripe\.setPublishableKey`,
-		"PayPal":             `paypal\.com|paypalobjects\.com`,
-		"Hotjar":             `hotjar\.com|hjSetting`,
-		"Intercom":           `intercom\.io|intercomSettings`,
-		"Drift":              `drift\.com|driftt\.com`,
+		"Stripe":             `js\.stripe\.com|Stripe\.setPublishableKey|\bStripe\(\s*['"]pk_`,
+		"PayPal":             `paypalobjects\.com|paypal\.com/sdk/js|paypal\.com/cgi-bin/webscr|paypal\.com/donate`,
+		"Hotjar":             `static\.hotjar\.com|_hjSettings|hjSetting`,
+		"Intercom":           `widget\.intercom\.io|js\.intercomcdn\.com|intercomSettings`,
+		"Drift":              `js\.driftt\.com|\bdrift\.load\(`,
 	}
 
 	for tech, pattern := range patterns {
@@ -78,6 +84,11 @@ func DetectTechnologies(content string, headers map[string][]string, result *mod
 	// Check headers
 	for tech, pattern := range techPatterns {
 		for header, values := range headers {
+			// A CSP lists sources the site may load, not ones it does, so
+			// matching it would report every allowlisted CDN as in use.
+			if strings.HasPrefix(strings.ToLower(header), "content-security-policy") {
+				continue
+			}
 			for _, value := range values {
 				headerLine := header + ": " + value
 				if pattern.MatchString(headerLine) {
@@ -128,6 +139,7 @@ func DetectTechnologies(content string, headers map[string][]string, result *mod
 		}
 	}
 
+	sort.Strings(technologies)
 	result.Technologies = technologies
 }
 
@@ -155,7 +167,9 @@ func GetTechnologyCategories(technologies []string) map[string][]string {
 		"WooCommerce":        "CMS",
 		"jQuery":             "JavaScript",
 		"React":              "JavaScript",
+		"Next.js":            "Framework",
 		"Vue.js":             "JavaScript",
+		"Nuxt.js":            "Framework",
 		"Angular":            "JavaScript",
 		"Modernizr":          "JavaScript",
 		"Moment.js":          "JavaScript",

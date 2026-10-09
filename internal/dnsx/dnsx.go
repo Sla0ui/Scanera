@@ -85,3 +85,26 @@ func Resolves(ctx context.Context, host string, timeout time.Duration) bool {
 	ips, err := r.LookupHost(c, host)
 	return err == nil && len(ips) > 0
 }
+
+// CNAME returns the CNAME target of host, without the trailing dot, and
+// whether host actually has one. Unlike a full resolution it still returns
+// the target when that target no longer exists, which is exactly the dangling
+// case subdomain takeover checks care about.
+func CNAME(ctx context.Context, host string, timeout time.Duration) (string, bool) {
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	c, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var r net.Resolver
+	target, err := r.LookupCNAME(c, host)
+	if err != nil {
+		return "", false
+	}
+	target = strings.ToLower(strings.TrimSuffix(target, "."))
+	if target == "" || strings.EqualFold(target, strings.TrimSuffix(host, ".")) {
+		return "", false
+	}
+	return target, true
+}

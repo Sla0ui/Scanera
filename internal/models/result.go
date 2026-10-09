@@ -2,6 +2,7 @@ package models
 
 import (
 	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -31,6 +32,10 @@ type Result struct {
 	Endpoints    []string    `json:"endpoints,omitempty"`
 	Findings     []Finding   `json:"findings,omitempty"`
 	DiscoveredBy string      `json:"discovered_by,omitempty"` // e.g. "seed", "crtsh", "bruteforce"
+
+	// SkippedActive is set when active modules were requested but the host
+	// was outside the authorized scope.
+	SkippedActive bool `json:"skipped_active,omitempty"`
 }
 
 // AddFinding appends a finding with a normalized severity.
@@ -54,6 +59,23 @@ func (r Result) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
+// UnmarshalJSON restores Error from the "error" string MarshalJSON writes, so
+// results read back from scan_results.json keep their failure reason.
+func (r *Result) UnmarshalJSON(data []byte) error {
+	type alias Result
+	aux := struct {
+		*alias
+		ErrorMessage string `json:"error"`
+	}{alias: (*alias)(r)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.ErrorMessage != "" {
+		r.Error = errors.New(aux.ErrorMessage)
+	}
+	return nil
+}
+
 // ServerInfo contains HTTP server information
 type ServerInfo struct {
 	Server        string            `json:"server,omitempty"`
@@ -70,10 +92,13 @@ type SecurityInfo struct {
 	HasHTTPS        bool              `json:"has_https"`
 	ValidCert       bool              `json:"valid_cert"`
 	CertIssuer      string            `json:"cert_issuer,omitempty"`
+	CertSubject     string            `json:"cert_subject,omitempty"`
+	CertDNSNames    []string          `json:"cert_dns_names,omitempty"`
 	CertExpiry      time.Time         `json:"cert_expiry,omitempty"`
+	CertError       string            `json:"cert_error,omitempty"`
 	SecurityHeaders map[string]string `json:"security_headers,omitempty"`
 	HTTPSRedirect   bool              `json:"https_redirect"`
-	HSTPEnabled     bool              `json:"hstp_enabled"`
+	HSTSEnabled     bool              `json:"hsts_enabled"`
 	TLSVersion      string            `json:"tls_version,omitempty"`
 }
 
